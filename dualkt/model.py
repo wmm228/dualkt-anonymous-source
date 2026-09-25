@@ -1,9 +1,4 @@
-"""Modular, inductive knowledge tracing from universal KT fields.
-
-Every optional module consumes only concept IDs, prefix responses, or
-training-fold statistics derived from those fields. Modules return a state and
-an evidence reliability; they never own prediction heads.
-"""
+"""DualKT model implementation."""
 
 import math
 
@@ -11,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from V7.model import (
+from .layers import (
     ResidualMambaEncoder,
     TargetCrossAttentionLayer,
     TargetCrossAttentionTransformer,
@@ -2217,8 +2212,8 @@ class BaselineBranchFusion(nn.Module):
         return self.output_norm(fused), diagnostics
 
 
-class ModularEvidenceKT(nn.Module):
-    """One sequence core, modular general evidence, and one prediction head."""
+class _DualKTCore(nn.Module):
+    """Internal implementation shared by the paper model and its ablations."""
 
     def __init__(
         self,
@@ -2284,7 +2279,7 @@ class ModularEvidenceKT(nn.Module):
     ):
         super().__init__()
         if str(task_mode).lower() != 'concept':
-            raise ValueError('V8 currently implements the shared concept-level contract')
+            raise ValueError('DualKT implements the shared concept-level contract')
         if n_concepts < 2:
             raise ValueError('n_concepts must include padding and at least one concept')
         if concept_graph is None:
@@ -3859,6 +3854,78 @@ class ModularEvidenceKT(nn.Module):
         )
 
 
-# Compatibility name for development checkpoints created before the modular
-# interface was introduced. Official V8 configs use ``modular_evidence_kt``.
-InductiveCausalDualGraphKT = ModularEvidenceKT
+class DualKT(_DualKTCore):
+    """Paper configuration of DualKT.
+
+    The public constructor exposes only the structural inputs and architecture
+    sizes required by the model described in the paper. Development-only
+    switches and baseline variants remain internal to ``_DualKTCore``.
+    """
+
+    def __init__(
+        self,
+        n_questions,
+        n_concepts,
+        question_graph,
+        question_concept_incidence,
+        concept_question_incidence=None,
+        d_model=128,
+        d_state=32,
+        d_conv=4,
+        expand=2,
+        dropout=0.2,
+        mamba_version='mamba2',
+        mamba_layers=2,
+        n_heads=4,
+        transformer_layers=2,
+        short_window=64,
+        summary_block_size=32,
+        max_seq_len=200,
+        bundle_attention_strength=0.5,
+        bundle_attention_decay=0.9,
+        transition_decay=0.9,
+    ):
+        super().__init__(
+            n_questions=n_questions,
+            n_concepts=n_concepts,
+            d_model=d_model,
+            d_state=d_state,
+            d_conv=d_conv,
+            expand=expand,
+            dropout=dropout,
+            mamba_version=mamba_version,
+            mamba_layers=mamba_layers,
+            temporal_backbone='mamba_transformer',
+            n_heads=n_heads,
+            n_layers=transformer_layers,
+            short_window=short_window,
+            summary_block_size=summary_block_size,
+            max_seq_len=max_seq_len,
+            short_memory_mode='contiguous',
+            branch_fusion='denoised_adaptive_orthogonal_vector',
+            short_memory_source='event',
+            mamba_interaction='parallel',
+            dynamics_mode='entangled',
+            use_difficulty=False,
+            use_student_graph=False,
+            use_population_graph=False,
+            use_mastery=False,
+            use_concept_memory=False,
+            use_transition_graph=True,
+            transition_aggregation='recency',
+            transition_decay=transition_decay,
+            evidence_placement='posthoc',
+            use_target_retrieval=False,
+            ability_mode='off',
+            target_conditioned_readout=True,
+            use_item_context=False,
+            student_conditioning='off',
+            use_question_context=True,
+            question_graph=question_graph,
+            question_concept_incidence=question_concept_incidence,
+            concept_question_incidence=concept_question_incidence,
+            use_question_rasch=True,
+            use_bundle_attention_bias=True,
+            bundle_attention_strength=bundle_attention_strength,
+            bundle_attention_decay=bundle_attention_decay,
+        )
