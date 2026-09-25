@@ -445,5 +445,3 @@ class TargetCrossAttentionTransformer(nn.Module):
         )
         output = self._combine_hierarchies(query, summary, target_context)
         return output.masked_fill(~target_valid.unsqueeze(-1), 0.0)
-
-
